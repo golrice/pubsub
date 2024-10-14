@@ -99,7 +99,7 @@ You can configure various aspects of the system, such as:
 ## Project Structure
 
 ```
-pub-sub-grpc/
+pubsub/
 ├── client/
 │   ├── publisher/            # Publisher client implementation
 │   ├── subscriber/           # Subscriber client implementation
