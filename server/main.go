@@ -2,14 +2,11 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"sync"
-	"time"
 
 	pb "github.com/golrice/pubsub/proto"
 	"google.golang.org/grpc"
@@ -22,48 +19,50 @@ var (
 type broker struct {
 	pb.UnimplementedBrokerServer
 
-	topics map[string]chan *pb.Message
+	topics map[string][]chan *pb.Message
 	mu     sync.Mutex
 }
 
-func Publish(client pb.BrokerClient, topic string, message *pb.Message) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	response, err := client.Publish(ctx, &pb.PublishRequest{Topic: topic, Message: message})
-	if err != nil {
-		return err
+func (b *broker) Publish(cxt context.Context, req *pb.PublishRequest) (*pb.PublishResponse, error) {
+	if req.Topic == "" {
+		return nil, fmt.Errorf("empty topic")
+	}
+	if req.Message == nil {
+		return nil, fmt.Errorf("empty message")
 	}
 
-	if response.Success != true {
-		return errors.New("publish failed")
+	b.mu.Lock()
+	for _, subscribers := range b.topics[req.Topic] {
+		select {
+		case subscribers <- req.Message:
+		default:
+		}
 	}
+	b.mu.Unlock()
 
-	return nil
+	return &pb.PublishResponse{Success: true}, nil
 }
 
-func Subscribe(client pb.BrokerClient, topic string) (chan *pb.Message, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	stream, err := client.Subscribe(ctx, &pb.SubscribeRequest{Topic: topic})
-	if err != nil {
-		return nil, err
+func (b *broker) Subscribe(req *pb.SubscribeRequest, stream pb.Broker_SubscribeServer) error {
+	if req.Topic == "" {
+		return fmt.Errorf("empty topic")
 	}
+
+	b.mu.Lock()
+	subscriberChan := make(chan *pb.Message)
+	b.topics[req.Topic] = append(b.topics[req.Topic], subscriberChan)
+	b.mu.Unlock()
 
 	for {
-		response, err := stream.Recv()
-		if err == io.EOF {
-			break
+		select {
+		case msg := <-subscriberChan:
+			if err := stream.Send(msg); err != nil {
+				return err
+			}
+		case <-stream.Context().Done():
+			return nil
 		}
-		if err != nil {
-			return nil, err
-		}
-
-		fmt.Println(string(response.Data))
 	}
-
-	return nil, nil
 }
 
 func main() {
@@ -75,7 +74,7 @@ func main() {
 	}
 
 	s := grpc.NewServer()
-	pb.RegisterBrokerServer(s, &broker{topics: make(map[string]chan *pb.Message)})
+	pb.RegisterBrokerServer(s, &broker{topics: make(map[string][]chan *pb.Message)})
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
