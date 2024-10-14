@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+option go_package = "github.com/golrice/pubsub";
+
+package broker;
+
+service Broker {
+    rpc Publish(PublishRequest) returns (PublishResponse) {}
+    rpc Subscribe(SubscribeRequest) returns (stream Message) {}
+}
+
+message PublishRequest {
+    string topic = 1;
+    Message message = 2;
+}
+
+message PublishResponse {
+    bool success = 1;
+}
+
+message SubscribeRequest {
+    string topic = 1;
+}
+
+message Message {
+    bytes data = 1;
+}
