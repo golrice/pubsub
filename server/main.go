@@ -34,7 +34,7 @@ func (b *broker) storeMessage(req *pb.PublishRequest) {
 	b.messageStorage[req.Topic] = append(b.messageStorage[req.Topic], req.Message)
 	b.mu.Unlock()
 
-	time.AfterFunc(5*time.Second, func() {
+	time.AfterFunc(10*time.Second, func() {
 		b.mu.Lock()
 		b.messageStorage[req.Topic] = b.messageStorage[req.Topic][1:]
 		b.mu.Unlock()
@@ -86,10 +86,16 @@ func (b *broker) Subscribe(req *pb.SubscribeRequest, stream pb.Broker_SubscribeS
 	}
 	b.mu.Unlock()
 
+	timer := time.After(messageExpiryTime)
+
 	for {
-		msg := <-subscriberChan
-		if err := stream.Send(msg); err != nil {
-			return err
+		select {
+		case msg := <-subscriberChan:
+			if err := stream.Send(msg); err != nil {
+				return err
+			}
+		case <-timer:
+			return nil
 		}
 	}
 }

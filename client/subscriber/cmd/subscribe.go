@@ -17,16 +17,17 @@ var (
 	serverAddr = flag.String("addr", "localhost:50051", "The server address in the format of host:port")
 )
 
+var topic string
+
 var subscribeCmd = &cobra.Command{
 	Use:     "subscribe",
 	Aliases: []string{"sub", "s"},
 	Short:   "Subscribe to a topic",
 	Long:    "Subscribe to a topic",
-	Args:    cobra.ExactArgs(1),
+	Args:    cobra.ExactArgs(0),
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("subscribe topic: ", args[0])
-		if args[0] != "" {
-			if err := Subscribe(args[0]); err != nil {
+		if topic != "" {
+			if err := Subscribe(topic); err != nil {
 				fmt.Println(err)
 			}
 		}
@@ -34,6 +35,7 @@ var subscribeCmd = &cobra.Command{
 }
 
 func init() {
+	subscribeCmd.Flags().StringVarP(&topic, "topic", "t", "", "The topic to subscribe to")
 	rootCmd.AddCommand(subscribeCmd)
 }
 

@@ -81,13 +81,13 @@ Make sure you have the following installed on your machine:
 2. **Run a Publisher**:
 
    ```bash
-   go run client/publisher/main.go --topic=example --message="Hello World!"
+   go run client/publisher/main.go p --topic=example --message="Hello World!"
    ```
 
 3. **Run a Subscriber**:
 
    ```bash
-   go run client/subscriber/main.go --topic=example
+   go run client/subscriber/main.go s --topic=example
    ```
 
 ### Configuration
