@@ -18,26 +18,28 @@ var (
 )
 
 var topic string
+var message string
 
 var publishCmd = &cobra.Command{
 	Use:     "publish",
 	Aliases: []string{"pub", "p"},
 	Short:   "Publish a message to a topic",
 	Long:    `Publish a message to a topic`,
-	Args:    cobra.ExactArgs(1),
+	Args:    cobra.ExactArgs(0),
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("publish msg: ", args[0])
-		if topic != "" {
-			fmt.Println("publish to topic: ", topic)
-			if err := publish(topic, args[0]); err != nil {
+		if topic != "" && message != "" {
+			if err := publish(topic, message); err != nil {
 				fmt.Println("publish failed: ", err)
+				return
 			}
+			fmt.Println("you publish", message, "to", topic, "successfully")
 		}
 	},
 }
 
 func init() {
 	publishCmd.Flags().StringVarP(&topic, "topic", "t", "", "Topic to publish to")
+	publishCmd.Flags().StringVarP(&message, "message", "m", "", "Message to publish")
 	rootCmd.AddCommand(publishCmd)
 }
 
