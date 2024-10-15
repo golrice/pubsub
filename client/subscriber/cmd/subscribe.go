@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"time"
 
 	pb "github.com/golrice/pubsub/proto"
 
@@ -48,8 +47,7 @@ func Subscribe(topic string) error {
 
 	client := pb.NewBrokerClient(conn)
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
-	defer cancel()
+	ctx := context.Background()
 
 	stream, err := client.Subscribe(ctx, &pb.SubscribeRequest{Topic: topic})
 	if err != nil {
@@ -59,13 +57,12 @@ func Subscribe(topic string) error {
 	for {
 		msg, err := stream.Recv()
 		if err == io.EOF {
-			fmt.Println("End of stream")
 			break
 		}
 		if err != nil {
 			return err
 		}
-		fmt.Println("Received message: ", string(msg.Data))
+		fmt.Printf("%s: %s\n", topic, string(msg.Data))
 	}
 
 	return nil

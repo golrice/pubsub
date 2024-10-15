@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"sync"
+	"time"
 
 	pb "github.com/golrice/pubsub/proto"
 	"google.golang.org/grpc"
@@ -19,8 +20,25 @@ var (
 type broker struct {
 	pb.UnimplementedBrokerServer
 
-	topics map[string][]chan *pb.Message
-	mu     sync.Mutex
+	topics         map[string][]chan *pb.Message
+	messageStorage map[string][]*pb.Message
+	mu             sync.Mutex
+}
+
+func (b *broker) storeMessage(req *pb.PublishRequest) {
+	// 假设我们将消息存储到某个数据库或内存结构中，并在30秒后删除
+	b.mu.Lock()
+	if _, ok := b.messageStorage[req.Topic]; !ok {
+		b.messageStorage[req.Topic] = make([]*pb.Message, 0)
+	}
+	b.messageStorage[req.Topic] = append(b.messageStorage[req.Topic], req.Message)
+	b.mu.Unlock()
+
+	time.AfterFunc(5*time.Second, func() {
+		b.mu.Lock()
+		b.messageStorage[req.Topic] = b.messageStorage[req.Topic][1:]
+		b.mu.Unlock()
+	})
 }
 
 func (b *broker) Publish(cxt context.Context, req *pb.PublishRequest) (*pb.PublishResponse, error) {
@@ -40,6 +58,8 @@ func (b *broker) Publish(cxt context.Context, req *pb.PublishRequest) (*pb.Publi
 	}
 	b.mu.Unlock()
 
+	go b.storeMessage(req)
+
 	return &pb.PublishResponse{Success: true}, nil
 }
 
@@ -49,18 +69,27 @@ func (b *broker) Subscribe(req *pb.SubscribeRequest, stream pb.Broker_SubscribeS
 	}
 
 	b.mu.Lock()
-	subscriberChan := make(chan *pb.Message)
+	subscriberChan := make(chan *pb.Message, 10)
+	if _, ok := b.topics[req.Topic]; !ok {
+		b.topics[req.Topic] = make([]chan *pb.Message, 0)
+	}
 	b.topics[req.Topic] = append(b.topics[req.Topic], subscriberChan)
+
+	if _, ok := b.messageStorage[req.Topic]; ok {
+		messages := b.messageStorage[req.Topic]
+		for _, msg := range messages {
+			select {
+			case subscriberChan <- msg:
+			default:
+			}
+		}
+	}
 	b.mu.Unlock()
 
 	for {
-		select {
-		case msg := <-subscriberChan:
-			if err := stream.Send(msg); err != nil {
-				return err
-			}
-		case <-stream.Context().Done():
-			return nil
+		msg := <-subscriberChan
+		if err := stream.Send(msg); err != nil {
+			return err
 		}
 	}
 }
@@ -74,7 +103,9 @@ func main() {
 	}
 
 	s := grpc.NewServer()
-	pb.RegisterBrokerServer(s, &broker{topics: make(map[string][]chan *pb.Message)})
+	topics := make(map[string][]chan *pb.Message)
+	messageStorage := make(map[string][]*pb.Message)
+	pb.RegisterBrokerServer(s, &broker{topics: topics, messageStorage: messageStorage})
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
